@@ -1,7 +1,23 @@
 import net from "net";
 import { parseRESP, ParseResult } from "./resp";
+import { Store } from "./store";
+import { execute } from "./commands";
 
-const PORT = 6379;
+const PORT = Number(process.env.PORT ?? 6379);
+const DEBUG = Boolean(process.env.DEBUG);
+
+const store = new Store();
+store.start();
+
+function toArgs(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const args: string[] = [];
+  for (const v of value) {
+    if (v === null || v === undefined) return null;
+    args.push(Buffer.isBuffer(v) ? v.toString("utf8") : String(v));
+  }
+  return args;
+}
 
 const server = net.createServer((socket) => {
   console.log("Client connected");
@@ -10,47 +26,48 @@ const server = net.createServer((socket) => {
   let closing = false;
 
   socket.on("data", (data: Buffer) => {
-    // After a protocol error we've already called end(); ignore late bytes
     if (closing) return;
 
-    // Add newly received bytes
     buffer = Buffer.concat([buffer, data]);
 
     while (buffer.length > 0) {
       let result: ParseResult;
 
-      // Only the parser is inside try/catch. If command handling later
-      // throws, that's a server bug, not a "protocol error".
       try {
         result = parseRESP(buffer);
       } catch (error) {
         console.error("Protocol error:", (error as Error).message);
 
-        // The stream is out of sync: we can't know where the next command
-        // starts. Reply, then close (this is what real Redis does).
         closing = true;
         buffer = Buffer.alloc(0);
         socket.end("-ERR protocol error\r\n");
         return;
       }
 
-      // Command incomplete, wait for more bytes
       if (result.consumed === 0) {
         break;
       }
 
-      // Remove consumed bytes
       buffer = buffer.subarray(result.consumed);
 
-      // Real Redis silently ignores empty commands
       if (Array.isArray(result.value) && result.value.length === 0) {
         continue;
       }
 
-      console.log("Parsed:", result.value);
+      if (DEBUG) console.log("Parsed:", result.value);
 
-      // Temporary response
-      socket.write("+OK\r\n");
+      const args = toArgs(result.value);
+      if (args === null) {
+        socket.write("-ERR commands must be arrays of bulk strings\r\n");
+        continue;
+      }
+
+      try {
+        socket.write(execute(store, args));
+      } catch (error) {
+        console.error("Command error:", error);
+        socket.write("-ERR internal error\r\n");
+      }
     }
   });
 
@@ -74,4 +91,11 @@ server.on("error", (error: NodeJS.ErrnoException) => {
 
 server.listen(PORT, () => {
   console.log(`Mini Redis server running on port ${PORT}`);
+});
+
+// Clean shutdown on Ctrl+C
+process.on("SIGINT", () => {
+  store.stop();
+  server.close();
+  process.exit(0);
 });
