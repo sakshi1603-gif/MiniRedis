@@ -3,7 +3,7 @@
  * over a real TCP socket, exactly like redis-cli would.
  * Run with:  npx tsx --test src/e2e.test.ts
  */
-import { test, before, after } from "node:test";
+import { test, beforeAll, afterAll } from "vitest";
 import assert from "node:assert/strict";
 import net from "node:net";
 import path from "node:path";
@@ -37,17 +37,26 @@ function send(payload: string, waitMs = 150): Promise<string> {
   });
 }
 
-before(async () => {
-  const tsxCli = path.join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs");
+beforeAll(async () => {
+  const tsxCli = path.join(
+    process.cwd(),
+    "node_modules",
+    "tsx",
+    "dist",
+    "cli.mjs",
+  );
   server = spawn(process.execPath, [tsxCli, "src/server.ts"], {
     env: { ...process.env, PORT: String(PORT) },
-    stdio: "ignore",
+    stdio: "inherit",
   });
   // wait until the port accepts connections
   for (let i = 0; i < 50; i++) {
     const ok = await new Promise<boolean>((res) => {
       const s = net.connect(PORT, "127.0.0.1");
-      s.on("connect", () => { s.destroy(); res(true); });
+      s.on("connect", () => {
+        s.destroy();
+        res(true);
+      });
       s.on("error", () => res(false));
     });
     if (ok) return;
@@ -56,7 +65,7 @@ before(async () => {
   throw new Error("server did not start");
 });
 
-after(() => {
+afterAll(() => {
   server.kill();
 });
 
@@ -68,7 +77,9 @@ test("PING / SET / GET over real TCP", async () => {
 });
 
 test("pipelining: several commands in one write, replies in order", async () => {
-  const reply = await send(cmd("SET", "p", "1") + cmd("GET", "p") + cmd("DEL", "p"));
+  const reply = await send(
+    cmd("SET", "p", "1") + cmd("GET", "p") + cmd("DEL", "p"),
+  );
   assert.equal(reply, "+OK\r\n$1\r\n1\r\n:1\r\n");
 });
 
@@ -82,7 +93,10 @@ test("a command split across two TCP writes is reassembled", async () => {
       sock.write(full.slice(0, 10));
       setTimeout(() => sock.write(full.slice(10)), 50);
     });
-    setTimeout(() => { sock.destroy(); resolve(out); }, 250);
+    setTimeout(() => {
+      sock.destroy();
+      resolve(out);
+    }, 250);
   });
   assert.equal(reply, "+OK\r\n");
 });

@@ -1,12 +1,18 @@
 import { Store } from "./store";
 import * as enc from "./encode";
+import { saveSnapshot, DEFAULT_SNAPSHOT_PATH } from "./persistence";
+
 
 const INT = /^-?\d+$/;
 
 const arity = (cmd: string): string =>
   enc.error(`ERR wrong number of arguments for '${cmd.toLowerCase()}' command`);
 
-export function execute(store: Store, args: string[]): string {
+export function execute(
+  store: Store,
+  args: string[],
+  snapshotPath: string = DEFAULT_SNAPSHOT_PATH
+): string {
   if (args.length === 0) return enc.error("ERR empty command");
   const cmd = args[0].toUpperCase();
   const a = args.slice(1);
@@ -46,6 +52,16 @@ export function execute(store: Store, args: string[]): string {
 
     case "TTL":
       return a.length === 1 ? enc.integer(store.ttl(a[0])) : arity(cmd);
+
+    case "SAVE": {
+      if (a.length !== 0) return arity(cmd);
+      try {
+        saveSnapshot(store, snapshotPath);
+        return enc.simple("OK");
+      } catch {
+        return enc.error("ERR snapshot failed");
+      }
+    }
 
     default:
       return enc.error(`ERR unknown command '${args[0]}'`);

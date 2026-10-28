@@ -12,7 +12,7 @@ export class Store {
   start(sweepMs = 100): void {
     if (this.timer) return;
     this.timer = setInterval(() => this.sweep(), sweepMs);
-    this.timer.unref(); 
+    this.timer.unref();
   }
 
   stop(): void {
@@ -22,6 +22,15 @@ export class Store {
 
   get size(): number {
     return this.data.size;
+  }
+
+  /** Yields every non-expired entry. Read-only: does not delete or mutate. */
+  *liveEntries(): Generator<{ key: string; value: string; expiresAt: number | null }> {
+    const t = this.now();
+    for (const [key, e] of this.data) {
+      if (e.expiresAt !== null && e.expiresAt <= t) continue;
+      yield { key, value: e.value, expiresAt: e.expiresAt };
+    }
   }
 
   private live(key: string): Entry | undefined {
@@ -38,7 +47,6 @@ export class Store {
     this.data.delete(key);
     this.withTtl.delete(key);
   }
-
 
   set(key: string, value: string, ttlSeconds?: number): void {
     this.data.set(key, { value, expiresAt: null });
@@ -71,7 +79,7 @@ export class Store {
     const e = this.live(key);
     if (!e) return 0;
     if (seconds <= 0) {
-      this.removeKey(key); 
+      this.removeKey(key);
       return 1;
     }
     e.expiresAt = this.now() + seconds * 1000;
@@ -85,7 +93,6 @@ export class Store {
     if (e.expiresAt === null) return -1;
     return Math.ceil((e.expiresAt - this.now()) / 1000);
   }
-
 
   sweep(): void {
     const SAMPLE = 20;
