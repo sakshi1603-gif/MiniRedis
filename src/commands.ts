@@ -16,7 +16,6 @@ export function execute(store: Store, args: string[]): string {
       return a.length ? enc.bulk(a[0]) : enc.simple("PONG");
 
     case "SET": {
-      // SET key value  |  SET key value EX seconds
       if (a.length !== 2 && a.length !== 4) return arity(cmd);
       if (a.length === 4) {
         if (a[2].toUpperCase() !== "EX") return enc.error("ERR syntax error");
