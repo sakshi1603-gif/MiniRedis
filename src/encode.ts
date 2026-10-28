@@ -1,5 +1,5 @@
 // RESP reply encoders.
-const CRLF = "\r\n";
+const CRLF = "\r\n";//Carriage Return + Line Feed = end of a RESP line.
 
 export const simple = (s: string): string => `+${s}${CRLF}`;
 export const error = (s: string): string => `-${s}${CRLF}`;
