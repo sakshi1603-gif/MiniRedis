@@ -33,6 +33,23 @@ export class Store {
     }
   }
 
+  /**
+   * DAY 7 — raw insert used when loading a snapshot.
+   * expiresAt is an ABSOLUTE epoch ms (not a TTL), so we bypass set()/expire().
+   * Returns false if the entry is already expired and was skipped.
+   * Uses the injectable clock (this.now) so tests can fake time without sleeping.
+   */
+  restore(key: string, value: string, expiresAt: number | null): boolean {
+    if (expiresAt !== null && expiresAt <= this.now()) return false;
+    this.data.set(key, { value, expiresAt });
+    // The sweeper only looks at keys in withTtl; forget this and restored
+    // TTL keys that are never read again would never be cleaned up.
+    if (expiresAt !== null) this.withTtl.add(key);
+    else this.withTtl.delete(key);
+    return true;
+  }
+
+  //lazy expiration
   private live(key: string): Entry | undefined {
     const e = this.data.get(key);
     if (!e) return undefined;
@@ -89,9 +106,9 @@ export class Store {
 
   ttl(key: string): number {
     const e = this.live(key);
-    if (!e) return -2;
-    if (e.expiresAt === null) return -1;
-    return Math.ceil((e.expiresAt - this.now()) / 1000);
+    if (!e) return -2; //	Key doesn't exist
+    if (e.expiresAt === null) return -1; //	Key exists but has no expiration
+    return Math.ceil((e.expiresAt - this.now()) / 1000); //Remaining TTL in seconds
   }
 
   sweep(): void {
