@@ -43,7 +43,7 @@ export function loadSnapshot(
   store: Store,
   path: string = DEFAULT_SNAPSHOT_PATH
 ): number {
-  if (!existsSync(path)) return 0; // first run: normal, not an error
+  if (!existsSync(path)) return 0;
 
   let snap: Snapshot;
   try {

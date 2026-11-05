@@ -8,13 +8,13 @@ export class Store {
   private timer?: NodeJS.Timeout;
 
   constructor(private now: () => number = Date.now) {}
-
+ 
   start(sweepMs = 100): void {
     if (this.timer) return;
-    this.timer = setInterval(() => this.sweep(), sweepMs);
-    this.timer.unref();
+    this.timer = setInterval(() => this.sweep(), sweepMs); //Active expiration
+    this.timer.unref(); //Allows Node.js to exit naturally without this timer alone keeping the process alive.
   }
-
+  // shutdown 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
@@ -34,7 +34,7 @@ export class Store {
   }
 
   /**
-   * DAY 7 — raw insert used when loading a snapshot.
+   *  raw insert used when loading a snapshot.
    * expiresAt is an ABSOLUTE epoch ms (not a TTL), so we bypass set()/expire().
    * Returns false if the entry is already expired and was skipped.
    * Uses the injectable clock (this.now) so tests can fake time without sleeping.
