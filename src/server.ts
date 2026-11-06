@@ -1,10 +1,10 @@
 import net from "net";
-import { parseRESP, ParseResult } from "./resp";
-import { Store } from "./store";
-import { execute } from "./commands";
-import { buildSnapshot, saveSnapshot, loadSnapshot } from "./persistence";
-import { SnapshotScheduler } from "./snapshotScheduler";
-import { parseMemory } from "./memory-manager";
+import { parseRESP, ParseResult } from "./protocol/resp";
+import { Store } from "./store/store";
+import { execute } from "./commands/commands";
+import { buildSnapshot, saveSnapshot, loadSnapshot } from "./persistence/persistence";
+import { SnapshotScheduler } from "./persistence/snapshotScheduler";
+import { parseMemory } from "./store/memory-manager";
 
 const PORT = Number(process.env.PORT ?? 6379);
 const DEBUG = Boolean(process.env.DEBUG);

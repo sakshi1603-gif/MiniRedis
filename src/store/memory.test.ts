@@ -52,7 +52,9 @@ describe("MemoryManager", () => {
 
   it("evicts the least recently used key when full", () => {
     const { store, set } = setup(3);
-    set("k1", "v"); set("k2", "v"); set("k3", "v");
+    set("k1", "v");
+    set("k2", "v");
+    set("k3", "v");
     set("k4", "v");
     expect(store.has("k1")).toBe(false);
     expect([...store.keys()].sort()).toEqual(["k2", "k3", "k4"]);
@@ -60,7 +62,9 @@ describe("MemoryManager", () => {
 
   it("GET protects a key from eviction", () => {
     const { store, set, get } = setup(3);
-    set("k1", "v"); set("k2", "v"); set("k3", "v");
+    set("k1", "v");
+    set("k2", "v");
+    set("k3", "v");
     get("k1");
     set("k4", "v");
     expect(store.has("k1")).toBe(true);
@@ -69,7 +73,9 @@ describe("MemoryManager", () => {
 
   it("overwrite updates size, does not double count", () => {
     const { mm, set } = setup(3);
-    set("k1", "v"); set("k1", "v"); set("k1", "v");
+    set("k1", "v");
+    set("k1", "v");
+    set("k1", "v");
     expect(mm.usedBytes).toBe(sz);
   });
 
@@ -83,7 +89,9 @@ describe("MemoryManager", () => {
 
   it("evicts multiple keys when a big value arrives", () => {
     const { store, set } = setup(3);
-    set("k1", "v"); set("k2", "v"); set("k3", "v");
+    set("k1", "v");
+    set("k2", "v");
+    set("k3", "v");
     set("big", "x".repeat(sz)); // roughly 2 slots worth
     expect(store.has("big")).toBe(true);
     expect(store.size).toBeLessThan(3);

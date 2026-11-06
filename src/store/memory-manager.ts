@@ -1,5 +1,4 @@
 import { LruIndex } from "./lru";
-
 // Rough per-entry bookkeeping cost (Map slot, list node, object headers).
 // Real Redis also approximates; say this in interviews.
 const ENTRY_OVERHEAD = 64;
@@ -82,8 +81,18 @@ export class MemoryManager {
 export function parseMemory(input: string | undefined): number {
   if (input === undefined || input.trim() === "") return 0;
   const m = /^(\d+)\s*(b|kb|mb|gb)?$/i.exec(input.trim());
-  if (!m) throw new Error(`Invalid MAXMEMORY value: "${input}" (use e.g. 100mb, 512kb, 4096)`);
+  if (!m)
+    throw new Error(
+      `Invalid MAXMEMORY value: "${input}" (use e.g. 100mb, 512kb, 4096)`,
+    );
   const unit = (m[2] ?? "b").toLowerCase();
-  const mult = unit === "gb" ? 1024 ** 3 : unit === "mb" ? 1024 ** 2 : unit === "kb" ? 1024 : 1;
+  const mult =
+    unit === "gb"
+      ? 1024 ** 3
+      : unit === "mb"
+        ? 1024 ** 2
+        : unit === "kb"
+          ? 1024
+          : 1;
   return Number(m[1]) * mult;
 }

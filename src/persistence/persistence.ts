@@ -1,5 +1,5 @@
 import { writeFileSync, renameSync, readFileSync, existsSync } from "node:fs";
-import { Store } from "./store";
+import { Store } from "../store/store";
 
 export const DEFAULT_SNAPSHOT_PATH = process.env.MINI_REDIS_DUMP ?? "dump.json";
 

@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { Store } from "./store";
+import { Store } from "../store/store";
 import { execute } from "./commands";
 
 const run = (s: Store, ...args: string[]) => execute(s, args);

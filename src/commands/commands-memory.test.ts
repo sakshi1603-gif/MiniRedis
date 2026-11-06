@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { Store } from "./store";
 import { execute } from "./commands";
-import * as enc from "./encode";
-import { estimateSize, parseMemory } from "./memory-manager";
+import { Store } from "../store/store";
+import * as enc from "../protocol/encode";
+import { estimateSize, parseMemory } from "../store/memory-manager";
 
 const SLOT = estimateSize("k1", "v");
 const run = (s: Store, ...args: string[]) => execute(s, args);

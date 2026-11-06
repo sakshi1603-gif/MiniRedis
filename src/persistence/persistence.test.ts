@@ -8,9 +8,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Store } from "./store";
+import { Store } from "../store/store";
 import { saveSnapshot, loadSnapshot, Snapshot } from "./persistence";
-import { execute } from "./commands";
+import { execute } from "../commands/commands";
 
 // ───────────────────────── DAY 6: save ─────────────────────────
 

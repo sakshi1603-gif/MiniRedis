@@ -1,7 +1,7 @@
-import { Store } from "./store";
-import * as enc from "./encode";
-import { saveSnapshot, DEFAULT_SNAPSHOT_PATH } from "./persistence";
-import { OomError } from "./memory-manager";
+import { Store } from "../store/store";
+import * as enc from "../protocol/encode";
+import { saveSnapshot, DEFAULT_SNAPSHOT_PATH } from "../persistence/persistence";
+import { OomError } from "../store/memory-manager";
 
 const INT = /^-?\d+$/;
 
