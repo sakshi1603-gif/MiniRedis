@@ -4,12 +4,15 @@ import { Store } from "./store";
 import { execute } from "./commands";
 import { buildSnapshot, saveSnapshot, loadSnapshot } from "./persistence";
 import { SnapshotScheduler } from "./snapshotScheduler";
+import { parseMemory } from "./memory-manager";
 
 const PORT = Number(process.env.PORT ?? 6379);
 const DEBUG = Boolean(process.env.DEBUG);
 const SNAPSHOT_PATH = process.env.SNAPSHOT_PATH ?? "./dump.json";
+// e.g. MAXMEMORY=100mb. Unset or 0 = unlimited. Bad value throws here (fail fast).
+const MAXMEMORY_BYTES = parseMemory(process.env.MAXMEMORY);
 
-const store = new Store();
+const store = new Store(Date.now, MAXMEMORY_BYTES);
 
 loadSnapshot(store, SNAPSHOT_PATH);
 
@@ -126,6 +129,11 @@ server.on("error", (error: NodeJS.ErrnoException) => {
 
 server.listen(PORT, () => {
   console.log(`Mini Redis server running on port ${PORT}`);
+  console.log(
+    MAXMEMORY_BYTES === 0
+      ? "maxmemory: unlimited (no eviction)"
+      : `maxmemory: ${MAXMEMORY_BYTES} bytes (allkeys-lru)`,
+  );
 });
 
 // Graceful shutdown: SIGINT (Ctrl+C) and SIGTERM (docker stop, EC2)

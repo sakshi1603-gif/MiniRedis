@@ -9,7 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Store } from "./store";
-import { saveSnapshot, loadSnapshot, startAutoSave, Snapshot } from "./persistence";
+import { saveSnapshot, loadSnapshot, Snapshot } from "./persistence";
 import { execute } from "./commands";
 
 // ───────────────────────── DAY 6: save ─────────────────────────
@@ -106,7 +106,7 @@ describe("SAVE command", () => {
   });
 });
 
-// ───────────────────────── DAY 7: load + autosave ─────────────────────────
+// ───────────────────────── DAY 7: load ─────────────────────────
 
 describe("snapshot load", () => {
   let dir: string;
@@ -237,55 +237,5 @@ describe("Store.restore", () => {
     const s = new Store(() => 1000);
     expect(s.restore("k", "v", 5000)).toBe(true);
     expect(s.get("k")).toBe("v");
-  });
-});
-
-describe("autosave", () => {
-  let dir: string;
-  let path: string;
-
-  beforeEach(() => {
-    vi.useFakeTimers();
-    dir = mkdtempSync(join(tmpdir(), "mini-redis-"));
-    path = join(dir, "dump.json");
-    vi.spyOn(console, "error").mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  it("saves on each tick", () => {
-    const store = new Store();
-    store.set("a", "1");
-    const stop = startAutoSave(store, 1000, path);
-
-    expect(existsSync(path)).toBe(false); // nothing before the first tick
-    vi.advanceTimersByTime(1000);
-    expect(existsSync(path)).toBe(true);
-    stop();
-  });
-
-  it("stop function halts further saves", () => {
-    const store = new Store();
-    store.set("a", "1");
-    const stop = startAutoSave(store, 1000, path);
-    vi.advanceTimersByTime(1000);
-    stop();
-
-    store.set("b", "2");
-    vi.advanceTimersByTime(5000);
-    const keys = JSON.parse(readFileSync(path, "utf8")).entries.map((e: any) => e.key);
-    expect(keys).toEqual(["a"]); // "b" never saved
-  });
-
-  it("a failed save is logged, not thrown", () => {
-    const store = new Store();
-    const stop = startAutoSave(store, 1000, join(dir, "no-such-dir", "dump.json"));
-    expect(() => vi.advanceTimersByTime(1000)).not.toThrow();
-    expect(console.error).toHaveBeenCalled();
-    stop();
   });
 });

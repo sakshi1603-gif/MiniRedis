@@ -67,19 +67,3 @@ export function loadSnapshot(
   return loaded;
 }
 
-/** Saves every intervalMs. Returns a function that stops the timer. */
-export function startAutoSave(
-  store: Store,
-  intervalMs = 5000,
-  path: string = DEFAULT_SNAPSHOT_PATH
-): () => void {
-  const timer = setInterval(() => {
-    try {
-      saveSnapshot(store, path);
-    } catch (err) {
-      console.error("[persistence] autosave failed:", err); // keep serving
-    }
-  }, intervalMs);
-  timer.unref(); // the timer alone must not keep the process alive
-  return () => clearInterval(timer);
-}
