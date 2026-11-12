@@ -1,57 +1,113 @@
-// E2E: graceful SIGTERM keeps data, kill -9 before any autosave loses it.
-// Run from the mini-redis/ folder:  npx vitest run src/shutdown.test.ts
-// Needs tsx installed:              npm i -D tsx
+
 import { spawn, ChildProcess } from "node:child_process";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+} from "vitest";
 import net from "node:net";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 // ---- CONFIG ----
-const PORT = 6399; // must differ from e2e.test.ts (6391); vitest runs files in parallel
-const ROOT = path.resolve(__dirname, ".."); // mini-redis/
+const PORT = 6399;
+const TEST_PASSWORD = "test-secret-123";
+
+const ROOT = path.resolve(__dirname, "..");
+
 const envFor = (snapshotPath: string) => ({
   PORT: String(PORT),
   SNAPSHOT_PATH: snapshotPath,
+  REDIS_PASSWORD: TEST_PASSWORD,
 });
 // ----------------
 
 function resp(...args: string[]) {
-  return `*${args.length}\r\n` + args.map((a) => `$${Buffer.byteLength(a)}\r\n${a}\r\n`).join("");
+  return (
+    `*${args.length}\r\n` +
+    args
+      .map(
+        (a) =>
+          `$${Buffer.byteLength(a)}\r\n${a}\r\n`
+      )
+      .join("")
+  );
 }
 
+// Every connection authenticates before executing its command.
 function send(...args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    const sock = net.connect(PORT, "127.0.0.1", () => sock.write(resp(...args)));
-    sock.once("data", (d) => { resolve(d.toString()); sock.end(); });
-    sock.once("error", reject);
+    const sock = net.connect(PORT, "127.0.0.1");
+    let output = "";
+    let responseCount = 0;
+
+    sock.on("connect", () => {
+      sock.write(
+        resp("AUTH", TEST_PASSWORD) +
+        resp(...args)
+      );
+    });
+
+    sock.on("data", (data) => {
+      output += data.toString();
+
+      // AUTH response + command response.
+      // Each response in these tests ends with CRLF.
+      responseCount += (data.toString().match(/\r\n/g) ?? []).length;
+
+      if (responseCount >= 2) {
+        sock.end();
+        resolve(output);
+      }
+    });
+
+    sock.on("error", reject);
   });
 }
 
 async function waitUp(timeoutMs = 8000) {
   const end = Date.now() + timeoutMs;
+
   while (Date.now() < end) {
-    try { await send("PING"); return; } catch { await new Promise((r) => setTimeout(r, 100)); }
+    try {
+      await send("PING");
+      return;
+    } catch {
+      await new Promise((r) => setTimeout(r, 100));
+    }
   }
+
   throw new Error("server did not start");
 }
 
 const children: ChildProcess[] = [];
 
 function startServer(snapshotPath: string): ChildProcess {
-  // process.execPath + --import tsx: no npx, works on Windows, cwd pinned to project root
-  const p = spawn(process.execPath, ["--import", "tsx", "src/server.ts"], {
-    cwd: ROOT,
-    env: { ...process.env, ...envFor(snapshotPath) },
-    stdio: "ignore",
-  });
+  const p = spawn(
+    process.execPath,
+    ["--import", "tsx", "src/server.ts"],
+    {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        ...envFor(snapshotPath),
+      },
+      stdio: "ignore",
+    }
+  );
+
   children.push(p);
+
   return p;
 }
 
 function exited(p: ChildProcess) {
-  return new Promise<void>((r) => p.once("exit", () => r()));
+  return new Promise<void>((resolve) => {
+    p.once("exit", () => resolve());
+  });
 }
 
 describe("persistence across shutdown", () => {
@@ -59,43 +115,78 @@ describe("persistence across shutdown", () => {
   let snap: string;
 
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "mini-redis-"));
+    dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "mini-redis-")
+    );
+
     snap = path.join(dir, "dump.json");
   });
 
   afterEach(() => {
-    // never leave orphan servers holding the port if a test fails midway
-    for (const c of children.splice(0)) if (c.exitCode === null) c.kill("SIGKILL");
-    fs.rmSync(dir, { recursive: true, force: true });
+    // Never leave orphan servers holding the port.
+    for (const c of children.splice(0)) {
+      if (c.exitCode === null) {
+        c.kill("SIGKILL");
+      }
+    }
+
+    fs.rmSync(dir, {
+      recursive: true,
+      force: true,
+    });
   });
 
-  // On Windows, kill("SIGTERM") hard-kills the process, so the handler never runs.
-  // Run this one in WSL / Docker / Linux.
-  it.skipIf(process.platform === "win32")("SIGTERM saves, data survives restart", async () => {
-    const a = startServer(snap);
-    await waitUp();
-    await send("SET", "k", "v");
-    a.kill("SIGTERM");
-    await exited(a);
+  // On Windows, SIGTERM does not execute the graceful
+  // shutdown handler in the same way as Linux.
+  it.skipIf(process.platform === "win32")(
+    "SIGTERM saves, data survives restart",
+    async () => {
+      const a = startServer(snap);
 
-    const b = startServer(snap);
-    await waitUp();
-    expect(await send("GET", "k")).toContain("v");
-    b.kill("SIGTERM");
-    await exited(b);
-  }, 30_000);
+      await waitUp();
 
-  it("kill -9 before any autosave loses unsaved data", async () => {
-    const a = startServer(snap);
-    await waitUp();
-    await send("SET", "k", "v");
-    a.kill("SIGKILL");
-    await exited(a);
+      const setReply = await send("SET", "k", "v");
+      expect(setReply).toContain("+OK\r\n");
 
-    const b = startServer(snap);
-    await waitUp();
-    expect(await send("GET", "k")).toContain("$-1"); // nil
-    b.kill("SIGKILL");
-    await exited(b);
-  }, 30_000);
+      a.kill("SIGTERM");
+      await exited(a);
+
+      const b = startServer(snap);
+
+      await waitUp();
+
+      const getReply = await send("GET", "k");
+      expect(getReply).toContain("v");
+
+      b.kill("SIGTERM");
+      await exited(b);
+    },
+    30_000
+  );
+
+  it(
+    "kill -9 before any autosave loses unsaved data",
+    async () => {
+      const a = startServer(snap);
+
+      await waitUp();
+
+      const setReply = await send("SET", "k", "v");
+      expect(setReply).toContain("+OK\r\n");
+
+      a.kill("SIGKILL");
+      await exited(a);
+
+      const b = startServer(snap);
+
+      await waitUp();
+
+      const getReply = await send("GET", "k");
+      expect(getReply).toContain("$-1");
+
+      b.kill("SIGKILL");
+      await exited(b);
+    },
+    30_000
+  );
 });

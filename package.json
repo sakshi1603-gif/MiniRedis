@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "tsx src/server.ts",
-    "test": "tsx --test src/store.test.ts src/commands.test.ts src/e2e.test.ts"
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
@@ -15,8 +15,5 @@
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
-  },
-  "dependencies": {
-    "net": "^1.0.2"
   }
 }

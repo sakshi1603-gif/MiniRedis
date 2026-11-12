@@ -1,3 +1,4 @@
+
 export type RespValue =
   | string
   | number
@@ -11,23 +12,32 @@ export interface ParseResult {
 
 const CRLF = "\r\n";
 
-// Limits: without these, one client can make the server buffer forever.
-const MAX_LINE_LEN = 64 * 1024;          // simple strings / errors / headers
-const MAX_BULK_LEN = 64 * 1024 * 1024;   // real Redis allows 512 MB
-const MAX_ARRAY_LEN = 1024 * 1024;       // max elements in one array
-const MAX_DEPTH = 32;                    // nested arrays, protects the call stack
+// Protocol limits
+const MAX_LINE_LEN = 64 * 1024;          // 64 KiB
+const MAX_BULK_LEN = 64 * 1024 * 1024;   // 64 MiB
+const MAX_ARRAY_LEN = 1024 * 1024;
+const MAX_DEPTH = 32;
 
-const INCOMPLETE: ParseResult = { value: null, consumed: 0 };
+const INCOMPLETE: ParseResult = {
+  value: null,
+  consumed: 0
+};
 
 /**
- * Strict integer parsing. parseInt("3abc") returns 3 and parseInt("abc")
- * returns NaN, both of which silently corrupt parsing. Reject them instead.
+ * Strict integer parsing.
+ * Reject malformed and unsafe integers.
  */
-function parseIntStrict(buffer: Buffer, start: number, end: number): number {
+function parseIntStrict(
+  buffer: Buffer,
+  start: number,
+  end: number
+): number {
   const text = buffer.toString("utf8", start, end);
 
   if (!/^-?\d+$/.test(text)) {
-    throw new Error(`Invalid integer: ${JSON.stringify(text)}`);
+    throw new Error(
+      `Invalid integer: ${JSON.stringify(text)}`
+    );
   }
 
   const n = Number(text);
@@ -39,21 +49,42 @@ function parseIntStrict(buffer: Buffer, start: number, end: number): number {
   return n;
 }
 
-/** Index of the first CRLF, or -1 if the line isn't complete yet. */
+/**
+ * Find the first CRLF.
+ * Returns -1 when the line is incomplete.
+ */
 function findLineEnd(buffer: Buffer): number {
   const end = buffer.indexOf(CRLF);
 
   if (end === -1) {
-    if (buffer.length > MAX_LINE_LEN) throw new Error("Line too long");
+    if (buffer.length > MAX_LINE_LEN) {
+      throw new Error("Line too long");
+    }
+
     return -1;
   }
 
-  if (end > MAX_LINE_LEN) throw new Error("Line too long");
+  if (end > MAX_LINE_LEN) {
+    throw new Error("Line too long");
+  }
 
   return end;
 }
 
-export function parseRESP(buffer: Buffer, depth = 0): ParseResult {
+/**
+ * Parse one RESP value.
+ *
+ * maxBulkLength:
+ * - Before authentication: 64 KiB
+ * - After authentication: 64 MiB
+ *
+ * The limit is also applied recursively to array elements.
+ */
+export function parseRESP(
+  buffer: Buffer,
+  depth = 0,
+  maxBulkLength = MAX_BULK_LEN
+): ParseResult {
   if (depth > MAX_DEPTH) {
     throw new Error("Nesting too deep");
   }
@@ -65,10 +96,11 @@ export function parseRESP(buffer: Buffer, depth = 0): ParseResult {
   const type = String.fromCharCode(buffer[0]);
 
   if (!"+-:$*".includes(type)) {
-    throw new Error(`Unknown RESP type: ${JSON.stringify(type)}`);
+    throw new Error(
+      `Unknown RESP type: ${JSON.stringify(type)}`
+    );
   }
 
-  // Every RESP type starts with a line ending in CRLF
   const lineEnd = findLineEnd(buffer);
 
   if (lineEnd === -1) {
@@ -88,57 +120,94 @@ export function parseRESP(buffer: Buffer, depth = 0): ParseResult {
     // Error
     case "-":
       return {
-        value: `ERROR: ${buffer.toString("utf8", 1, lineEnd)}`,
+        value: `ERROR: ${buffer.toString(
+          "utf8",
+          1,
+          lineEnd
+        )}`,
         consumed: afterLine
       };
 
     // Integer
     case ":":
       return {
-        value: parseIntStrict(buffer, 1, lineEnd),
+        value: parseIntStrict(
+          buffer,
+          1,
+          lineEnd
+        ),
         consumed: afterLine
       };
 
     // Bulk String
     case "$": {
-      const length = parseIntStrict(buffer, 1, lineEnd);
+      const length = parseIntStrict(
+        buffer,
+        1,
+        lineEnd
+      );
 
       // Null bulk string
       if (length === -1) {
-        return { value: null, consumed: afterLine };
+        return {
+          value: null,
+          consumed: afterLine
+        };
       }
 
-      if (length < 0 || length > MAX_BULK_LEN) {
-        throw new Error("Invalid bulk string length");
+      if (
+        length < 0 ||
+        length > maxBulkLength
+      ) {
+        throw new Error(
+          "Invalid bulk string length"
+        );
       }
 
       const dataEnd = afterLine + length;
 
-      // Body + trailing CRLF haven't fully arrived yet
+      // Body and trailing CRLF have not fully arrived.
       if (buffer.length < dataEnd + 2) {
         return INCOMPLETE;
       }
 
-      if (buffer[dataEnd] !== 13 || buffer[dataEnd + 1] !== 10) {
+      if (
+        buffer[dataEnd] !== 13 ||
+        buffer[dataEnd + 1] !== 10
+      ) {
         throw new Error("Invalid RESP bulk string");
       }
 
       return {
-        value: buffer.toString("utf8", afterLine, dataEnd),
+        value: buffer.toString(
+          "utf8",
+          afterLine,
+          dataEnd
+        ),
         consumed: dataEnd + 2
       };
     }
 
     // Array
     case "*": {
-      const count = parseIntStrict(buffer, 1, lineEnd);
+      const count = parseIntStrict(
+        buffer,
+        1,
+        lineEnd
+      );
 
       // Null array
       if (count === -1) {
-        return { value: null, consumed: afterLine };
+        return {
+          value: null,
+          consumed: afterLine
+        };
       }
 
-      if (count < 0 || count > MAX_ARRAY_LEN) {
+      if (
+        count < 0 ||
+        count > MAX_ARRAY_LEN
+      ) {
         throw new Error("Invalid array length");
       }
 
@@ -146,9 +215,13 @@ export function parseRESP(buffer: Buffer, depth = 0): ParseResult {
       const values: RespValue[] = [];
 
       for (let i = 0; i < count; i++) {
-        const result = parseRESP(buffer.subarray(offset), depth + 1);
+        const result = parseRESP(
+          buffer.subarray(offset),
+          depth + 1,
+          maxBulkLength
+        );
 
-        // An element is incomplete, so the whole array is incomplete
+        // An element is incomplete, so the whole array is incomplete.
         if (result.consumed === 0) {
           return INCOMPLETE;
         }
@@ -157,10 +230,12 @@ export function parseRESP(buffer: Buffer, depth = 0): ParseResult {
         offset += result.consumed;
       }
 
-      return { value: values, consumed: offset };
+      return {
+        value: values,
+        consumed: offset
+      };
     }
   }
 
-  // Unreachable, but keeps TypeScript happy
   throw new Error("Unreachable");
 }
